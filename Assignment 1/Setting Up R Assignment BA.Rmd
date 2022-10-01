@@ -1,0 +1,57 @@
+---
+title: "Setting Up R Assignment"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+Analyze the role of descriptive statistics in data exploration phase of analytics projects.
+
+1. Install the ISLR library using the install.packages() command. Call the library using the library(ISLR) command to ensure that the library is correctly installed.
+```{r}
+require("ISLR") #loads the required package
+library("ISLR") #activates the library
+
+#install.packages("ISLR") - Calling the package off since it's already installed.
+```
+
+2. Create a new R-Notebook (.Rmd) file. In the first code chunk, call the ISLR library and then print the summary of the Carseats dataset. How many observations (rows) this dataset contains?
+```{r}
+library("ISLR")
+#activates the ISLR Package
+summary(Carseats)#prints out the summary of the Carseats dataset which is a part of the ISLR Package
+nrow(Carseats)#gives us the count of the total rows presented in the Carseats dataset
+```
+
+3. Using the summary statistics shown above, what is maximum value of the advertising attribute?
+```{r}
+max(Carseats$Advertising)
+#since we have used summary function above using the max() function exclusively to find the max value
+```
+
+4. Calculate the IQR of the Price attribute.
+```{r}
+IQR(Carseats$Price)
+#IQR refers to the inter-quartile range
+```
+
+5. Plot the Sales against Price. What do you see in there? Calculate the correlation of the two attributes. What does the sign of the correlation coefficient suggest?
+```{r}
+#Using qplot function to plot sales vs price
+#install.packages("ggplot2") - If the package isn't installed.
+library("ggplot2")
+#Running the qplot function
+qplot(data=Carseats,x=Sales,y=Price, xlab = "Sales", ylab = "Price", main = "Sales vs Price")
+#using cor.test() for calculating the correlation coefficient between Sales and Price.
+cor.test(x = Carseats$Sales,y = Carseats$Price,method="pearson")
+```
+
+Key Findings from the plot Sales vs Price:
+1. x and y variables have a negative or a inverse relationship.
+2. Strength between the variables - They don't appear to be that strong, if they would have been strong then the points would have been closer helping to form an imaginary line.
+3. Relationship - In here it appears that x and y have a linear relationship.
+
+We see that the correlation coefficient value is -0.4449507 which falls under the bucket of -1 indicating that there exists a strong negative correlation or inverse relationship: this means that every time x increases, y decreases and vice-versa.
+
+We are following the "pearson method" which is most widely used. It measures a linear dependence between two variables (x and y). It’s also known as a parametric correlation test because it depends to the distribution of the data. Alternatively we can change the method to "kendall" and "spearman" as well. 
