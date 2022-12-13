@@ -1,0 +1,382 @@
+---
+title: "BA Group Project - Group 4"
+output:
+  word_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+*Setting default values to get a clean output*
+```{r}
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+*Loading the required packages*
+```{r}
+library("ISLR")
+library("caret")
+library("class")
+library("e1071")
+library("dplyr")
+library("tidyverse")
+library("ggplot2")
+library("gmodels")
+library("MASS")
+library("broom")
+library("modelr")
+library("Hmisc")
+library("missForest")
+library("rpart")
+library("rattle")
+library("pROC")
+library("ROCR")
+library("cutpointr")
+library("ROSE")
+```
+
+*Setting the default working directory*
+```{r}
+setwd("/Users/sampathnikhilkumar/Desktop/Final Group Project - BA")
+```
+
+*Loading the data sets*
+```{r}
+#Training Data set
+raw_data <- read.csv("Churn_Train.csv")
+
+#Test Data set
+load("~/Desktop/Final Group Project - BA/Customers_To_Predict.RData")
+```
+
+*Data Cleaning & Transformation*
+```{r}
+#Removing Unnecessary Columns
+churn_Train <- raw_data[,-c(1:3)]
+
+#Re-coding few variables
+churn_Train$churn <- ifelse(churn_Train$churn =="yes",1,0)
+churn_Train$international_plan <- ifelse(churn_Train$international_plan =="yes",1,0)
+churn_Train$voice_mail_plan <- ifelse(churn_Train$voice_mail_plan =="yes",1,0)
+
+#Imputing NA Values
+all_column_median <- apply(churn_Train,2,median, na.rm=T)
+  
+for(i in colnames(churn_Train))
+churn_Train[,i][is.na(churn_Train[,i])] <- all_column_median[i]
+
+#Converting integer to factor
+churn_Train$churn <- as.factor(churn_Train$churn)
+
+#Changing the order of the factor levels
+churn_Train$churn <-  factor(churn_Train$churn,levels(churn_Train$churn)[c(2,1)])
+```
+
+*Partitioning the given churn_data into 75% train and 25% validation*
+```{r}
+data_part <- createDataPartition(churn_Train$churn,p=.75,list=F)
+
+Train_Data <- churn_Train[data_part,]
+Validation_Data <- churn_Train[-data_part,]
+```
+
+*Running a logistic regression model with cross validation (cv) as trainControl on train data*
+```{r}
+set.seed(125)
+train_control <- trainControl(method = "repeatedcv",number=10,repeats = 3,savePredictions = 'final',classProbs = F)
+ 
+lr.model <- train(churn~., data = Train_Data, method = "glm", family="binomial", metric="Accuracy", trControl = train_control)
+```
+
+*Running kNN model on train data*
+```{r}
+set.seed(125)
+train_control <- trainControl(method = "repeatedcv",number=10,repeats = 3,savePredictions = 'final',classProbs = F)
+ 
+knn.model <- train(churn~., data = Train_Data, method = "knn", metric="Accuracy", trControl = train_control)
+```
+
+*Running Naive Bayes Model on train data*
+```{r}
+set.seed(876)
+naive.bayes <- naiveBayes(churn~.,data=Train_Data)
+```
+
+*Running the Decision Tree Model on train data*
+```{r}
+set.seed(765)
+Dec_Tree.model <- rpart(churn~.,data=Train_Data,method="class")
+fancyRpartPlot(Dec_Tree.model)
+```
+*Testing the models over validation set*
+```{r}
+#Predicting the logistic regression model built over the validation data to check the accuracy
+lr_validate <- predict(lr.model,Validation_Data,type ="prob")
+churn.lr.validate <- cbind(Validation_Data,lr_validate)
+
+#Predicting the kNN model built over the validation data to check the accuracy
+knn.validate <- predict(knn.model,Validation_Data,type="prob")
+knn.validate.df <- cbind(Validation_Data,knn.validate)
+
+#Predicting the naive bayes model built over the validation data to check the accuracy
+bayes.validate <- predict(naive.bayes,Validation_Data,type="raw")
+bayes.validate.df <- cbind(Validation_Data,bayes.validate)
+
+#Predicting the decision tree model built over the validation data to check the accuracy
+dec_validate <- predict(Dec_Tree.model,Validation_Data,type ="prob")
+churn.dec.validate <- cbind(Validation_Data,dec_validate)
+```
+
+*Optimal Threshold - Cut Off Point*
+```{r}
+#Logistic Regression
+ROC_pred_lr_test <- prediction(lr_validate[,1],churn.lr.validate$churn)
+
+ROCR_perf_lr_test <- performance(ROC_pred_lr_test,'tpr','fpr')
+
+acc_lr_perf <- performance(ROC_pred_lr_test,"acc")
+
+ROC_pred_lr_test@cutoffs[[1]][which.max(acc_lr_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(churn.lr.validate$churn, lr_validate[,1], plotit = F)
+```
+```{r}
+#k-NN
+ROC_pred_knn_test <- prediction(knn.validate[,1],knn.validate.df$churn)
+
+ROCR_perf_knn_test <- performance(ROC_pred_knn_test,'tpr','fpr')
+
+acc_knn_perf <- performance(ROC_pred_knn_test,"acc")
+
+ROC_pred_knn_test@cutoffs[[1]][which.max(acc_knn_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(knn.validate.df$churn,knn.validate[,1], plotit = F)
+```
+```{r}
+#Naive Bayes
+ROC_pred_bayes_test <- prediction(bayes.validate[,1],bayes.validate.df$churn)
+
+ROCR_perf_bayes_test <- performance(ROC_pred_bayes_test,'tpr','fpr')
+
+acc_bayes_perf <- performance(ROC_pred_bayes_test,"acc")
+
+ROC_pred_bayes_test@cutoffs[[1]][which.max(acc_bayes_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(bayes.validate.df$churn,bayes.validate[,1], plotit = F)
+```
+
+```{r}
+#Decision Tree
+ROC_pred_dec_test <- prediction(dec_validate[,1],churn.dec.validate$churn)
+
+ROCR_perf_dec_test <- performance(ROC_pred_dec_test,'tpr','fpr')
+
+acc_dec_perf <- performance(ROC_pred_dec_test,"acc")
+
+ROC_pred_dec_test@cutoffs[[1]][which.max(acc_dec_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(churn.dec.validate$churn,dec_validate[,1], plotit = F)
+```
+*Re-Coding Variables - To run the CrossTable()*
+```{r}
+#Setting the optimal cutoffs for all the models
+#Logistic Regression Model
+churn.lr.validate$prob <- as.factor(ifelse(churn.lr.validate$`1`>0.6705911,"yes","no"))
+#kNN Model
+knn.validate.df$prob <- as.factor(ifelse(knn.validate.df$`1`>0.5555556,"yes","no"))
+#Naive Bayes Model
+bayes.validate.df$prob <- as.factor(ifelse(bayes.validate.df$`1`>0.3042114,"yes","no"))
+#Decision Tree Model
+churn.dec.validate$prob <- as.factor(ifelse(churn.dec.validate$`1`>0.3076923,"yes","no"))
+
+#Converting the churn column back to yes and no
+churn.lr.validate$churn <- as.factor(ifelse(churn.lr.validate$churn==1,"yes","no"))
+knn.validate.df$churn <- as.factor(ifelse(knn.validate.df$churn==1,"yes","no"))
+bayes.validate.df$churn <- as.factor(ifelse(bayes.validate.df$churn==1,"yes","no"))
+churn.dec.validate$churn <- as.factor(ifelse(churn.dec.validate$churn==1,"yes","no"))
+```
+
+*Using CrossTable() to look at the performance metrics and miscalculations for all the models*
+```{r}
+#Logistic Regression Model
+CrossTable(x=churn.lr.validate$churn,y=churn.lr.validate$prob,prop.chisq = F)
+```
+***Performance Metrics - Logistic Regression Model***\vspace{.5mm}
+\newline
+*True Positive (TP) - 13*\vspace{.5mm}
+\newline
+*True Negative (TN) - 712*\vspace{.5mm}
+\newline
+*False Positive (FP) - 0*\vspace{.5mm}
+\newline
+*False Negative (FN) - 107*\vspace{.5mm}
+\newline
+*Miscalculations - 107*\vspace{1mm}
+\newline
+*Accuracy = TP+TN/TP+TN+FP+FN = 13+712/832 = 87.13 %*\vspace{.5mm}
+\newline
+*Specificity (TNR) = TN/TN+FP = 712/712+0 = 100 %*\vspace{.5mm}
+\newline
+*Sensitivity (TPR) = TP/TP+FN = 13/13+107 = 10.83 %*\vspace{1mm}
+\newline
+
+```{r}
+#kNN Model
+CrossTable(x=knn.validate.df$churn,y=knn.validate.df$prob,prop.chisq = F)
+```
+***Performance Metrics - kNN Model***\vspace{.5mm}
+\newline
+*True Positive (TP) - 19*\vspace{.5mm}
+\newline
+*True Negative (TN) - 711*\vspace{.5mm}
+\newline
+*False Positive (FP) - 1*\vspace{.5mm}
+\newline
+*False Negative (FN) - 101*\vspace{.5mm}
+\newline
+*Miscalculations - 102*\vspace{1mm}
+\newline
+*Accuracy = TP+TN/TP+TN+FP+FN = 19+711/832 = 87.74 %*\vspace{.5mm}
+\newline
+*Specificity (TNR) = TN/TN+FP = 711/711+1 = 99.85 %*\vspace{.5mm}
+\newline
+*Sensitivity (TPR) = TP/TP+FN = 19/19+101 = 15.83 %*\vspace{1mm}
+\newline
+
+```{r}
+#Naive Bayes Model
+CrossTable(x=bayes.validate.df$churn,y=bayes.validate.df$prob,prop.chisq=F)
+```
+***Performance Metrics - Naive Bayes Model***\vspace{.5mm}
+\newline
+*True Positive (TP) - 80*\vspace{.5mm}
+\newline
+*True Negative (TN) - 645*\vspace{.5mm}
+\newline
+*False Positive (FP) - 67*\vspace{.5mm}
+\newline
+*False Negative (FN) - 40*\vspace{.5mm}
+\newline
+*Miscalculations - 107*\vspace{1mm}
+\newline
+*Accuracy = TP+TN/TP+TN+FP+FN = 80+645/832 = 87.13 %*\vspace{.5mm}
+\newline
+*Specificity (TNR) = TN/TN+FP = 645/645+67 = 90.58 %*\vspace{.5mm}
+\newline
+*Sensitivity (TPR) = TP/TP+FN = 80/80+40 = 66.66 %*\vspace{1mm}
+\newline
+
+```{r}
+#Decision Tree Model
+CrossTable(x=churn.dec.validate$churn,y=churn.dec.validate$prob,prop.chisq = F)
+```
+***Performance Metrics - Decision Tree***\vspace{.5mm}
+\newline
+*True Positive (TP) - 92*\vspace{.5mm}
+\newline
+*True Negative (TN) - 690*\vspace{.5mm}
+\newline
+*False Positive (FP) - 22*\vspace{.5mm}
+\newline
+*False Negative (FN) - 28*\vspace{.5mm}
+\newline
+*Miscalculations - 50*\vspace{1mm}
+\newline
+*Accuracy = TP+TN/TP+TN+FP+FN = 92+690/832 = 93.99 %*\vspace{.5mm}
+\newline
+*Specificity (TNR) = TN/TN+FP = 690/690+22 = 96.91 %*\vspace{.5mm}
+\newline
+*Sensitivity (TPR) = TP/TP+FN = 92/92+28 = 76.66 %*\vspace{1mm}
+\newline
+***Eventually, we can see that the decision tree model is working quite good on the validation set when compared to that with the other models. Accuracy, Sensitivity and Specificity is comparatively high so we are proceeding with the decision tree model to be implemented on the "test set".***\vspace{2mm}
+\newline
+*In order to use an effective model on the test set we did try to use pruning as well to check if there's any rise in the accuracy*\vspace{1mm}
+\newline
+*Pruning the decision tree model*
+```{r}
+#Base Model
+#The Dec_Tree.model is the base model which was already built at the beginning
+printcp(Dec_Tree.model)
+plotcp(Dec_Tree.model)
+#The base model accuracy as seen above is 93.99% (94% approx)
+
+# Pre-Pruning
+# Growing a tree with minsplit of 50 and maxdepth of 6
+Dec_Tree.model_preprun <- rpart(churn ~ ., data = Train_Data, method = "class", control = rpart.control(cp=0,minsplit = 50,maxdepth = 6))
+
+# predicting the above pre-pruned tree on the validation set
+churn.dec.validate.preprun <- predict(Dec_Tree.model_preprun, Validation_Data, type = "prob")
+churn.dec.validate.preprun.df <- cbind(Validation_Data,churn.dec.validate.preprun)
+
+#Optimal K
+ROC_pred_dec.pre_test <- prediction(churn.dec.validate.preprun[,1],churn.dec.validate.preprun.df$churn)
+
+ROCR_perf_dec.pre_test <- performance(ROC_pred_dec.pre_test,'tpr','fpr')
+
+acc_dec.pre_perf <- performance(ROC_pred_dec.pre_test,"acc")
+
+ROC_pred_dec.pre_test@cutoffs[[1]][which.max(acc_dec.pre_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(churn.dec.validate.preprun.df$churn,churn.dec.validate.preprun[,1], plotit = F)
+
+#Calculating Accuracy
+churn.dec.validate.preprun.df$prob <- as.factor(ifelse(churn.dec.validate.preprun.df$`1`>0.7857143,1,0))
+
+accuracy_preprun <- mean(churn.dec.validate.preprun.df$churn==churn.dec.validate.preprun.df$prob)
+accuracy_preprun
+
+#Post- Pruning
+# Pruning the Dec_Tree.model based on the optimal cp value
+Dec_tree.model_pruned <- prune(Dec_Tree.model, cp = 0.0100)
+
+#predicting the above pruned tree on the validation set
+churn.dec.validate.pruned <- predict(Dec_tree.model_pruned, Validation_Data, type = "prob")
+churn.dec.validate.pruned.df <- cbind(Validation_Data,churn.dec.validate.pruned)
+
+#Optimal K
+ROC_pred_dec.pos_test <- prediction(churn.dec.validate.pruned[,1],churn.dec.validate.pruned.df$churn)
+
+ROCR_perf_dec.pos_test <- performance(ROC_pred_dec.pos_test,'tpr','fpr')
+
+acc_dec.pos_perf <- performance(ROC_pred_dec.pos_test,"acc")
+
+ROC_pred_dec.pos_test@cutoffs[[1]][which.max(acc_dec.pos_perf@y.values[[1]])]
+
+#AUC Value
+roc.curve(churn.dec.validate.pruned.df$churn,churn.dec.validate.pruned[,1], plotit = F)
+
+#Calculating Accuracy
+churn.dec.validate.pruned.df$prob <- as.factor(ifelse(churn.dec.validate.pruned.df$`1`>0.3076923,1,0))
+
+accuracy_postprun <- mean(churn.dec.validate.pruned.df$churn==churn.dec.validate.pruned.df$prob)
+accuracy_postprun
+
+#Comparing the base mode, pre-pruning model and post pruning model's accuracy
+#Base model accuracy = 0.9399038
+data.frame(accuracy_preprun, accuracy_postprun)
+```
+*Pruning can not have significant impact when the data is imbalanced and this can be a possible reason to not see any change in the accuracy in "post - pruning model". We are thereby affirming to the base model and using the base model (Dec_Tree_Model) to predict the test set.*\vspace{2mm}
+\newline
+*Prediction - Test Set*
+```{r}
+#Re-coding the variables as being used in the train set
+Customers_To_Predict$international_plan <- ifelse(Customers_To_Predict$international_plan =="yes",1,0)
+Customers_To_Predict$voice_mail_plan <- ifelse(Customers_To_Predict$voice_mail_plan =="yes",1,0)
+
+#Predicting the decision tree model built over the unseen data
+dec.test <- predict(Dec_Tree.model,Customers_To_Predict,type="prob")
+churn.dec.test <- cbind(Customers_To_Predict,dec.test)
+
+#Setting the baseline model cutoff point i.e. 0.3076923 on the test set
+churn.dec.test$prob <- as.factor(ifelse(churn.dec.test$`1`>0.3076923,"yes","no"))
+
+#Deleting the probability columns 1 and 0
+churn.dec.test <- churn.dec.test[,-c(20:21)]
+```
+*The final file to look for the churns and no churns is the churn.dec.test.*
